@@ -21,7 +21,6 @@ export default class Player {
   public blockHitbox: Phaser.GameObjects.Rectangle;
 
   private state: PlayerState = "idle";
-
   private facing: -1 | 1 = 1;
   private velocityY = 0;
 
@@ -32,12 +31,12 @@ export default class Player {
 
   private attackCooldown = 0;
   private attackType: AttackType = "light";
+  private attackStance: Stance = "mid";
 
   private blockTime = 0;
   private blockCooldown = 0;
 
   private stance: Stance = "mid";
-  private attackStance: Stance = "mid";
 
   private combo = 0;
   private comboTimer = 0;
@@ -48,16 +47,16 @@ export default class Player {
   private hitstop = 0;
   private hitstun = 0;
 
-  // guard
   private guard = 100;
   private readonly GUARD_MAX = 100;
   private guardBroken = false;
   private guardBreakTime = 0;
 
-  // attack active frames
+  private health = 100;
+
   private attackActiveTimer = 0;
-  private attackTotalTimer = 0;
   private attackActive = false;
+  private attackTotalTimer = 0;
 
   private readonly SPEED = 200;
   private readonly GRAVITY = 100;
@@ -87,6 +86,8 @@ export default class Player {
   }
 
   update(dt: number, input: any) {
+    if (this.state === "dead") return;
+
     if (this.hitstop > 0) {
       this.hitstop -= dt;
       return;
@@ -174,7 +175,7 @@ export default class Player {
             this.attackHitbox.setVisible(true);
           }
         } else {
-          this.attackActiveTimer -= dt;
+          // disable after active window ends
           if (this.attackActiveTimer <= -0.12) {
             this.attackHitbox.setVisible(false);
             this.attackActive = false;
@@ -183,10 +184,17 @@ export default class Player {
 
         this.updateHitbox(this.attackHitbox);
 
-        if (this.attackTotalTimer <= 0) this.endAttack();
+        if (this.attackTotalTimer <= 0) {
+          this.endAttack();
+        }
         break;
 
       case "hit":
+        // handled above by hitstun timer
+        break;
+
+      case "stagger":
+        // same as hit but longer
         this.hitstun -= dt;
         if (this.hitstun <= 0) this.state = "idle";
         break;
@@ -302,7 +310,13 @@ export default class Player {
     this.parryCooldown = 0.6;
   }
 
-  public applyHit(direction: -1 | 1, force: number, hitstun: number, damage: number, isAirborne: boolean) {
+  public applyHit(
+    direction: -1 | 1,
+    force: number,
+    hitstun: number,
+    damage: number,
+    isAirborne: boolean
+  ) {
     if (this.state === "dead") return;
 
     if (this.state === "parry") {
@@ -319,6 +333,16 @@ export default class Player {
         this.state = "stagger";
         this.hitstun = 0.6;
       }
+      return;
+    }
+
+    this.health -= damage;
+    if (this.health <= 0) {
+      this.health = 0;
+      this.state = "dead";
+      this.sprite.setVisible(false);
+      this.attackHitbox.setVisible(false);
+      this.blockHitbox.setVisible(false);
       return;
     }
 
@@ -368,7 +392,7 @@ export default class Player {
   }
 
   public isCurrentlyAttacking() {
-    return this.state === "attack";
+    return this.state === "attack" && this.attackActive;
   }
 
   public getAttackHitbox() {
@@ -389,11 +413,11 @@ export default class Player {
     return base * comboBonus;
   }
 
-  public getAttackActive(): boolean {
-    return this.state === "attack" && this.attackHitbox.visible;
-  }
-
   public getGuard(): number {
     return this.guard;
+  }
+
+  public isDead() {
+    return this.state === "dead";
   }
 }
