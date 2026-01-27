@@ -6,13 +6,13 @@ export type DummyState =
   | "block"
   | "hit"
   | "stagger"
-  | "dead";                                        
+  | "dead";
 
 export default class Dummy {
   public sprite: Phaser.GameObjects.Rectangle;
   public hitbox: Phaser.GameObjects.Rectangle;
   public attackHitbox: Phaser.GameObjects.Rectangle;
-     
+
   private state: DummyState = "idle";
   private facing: -1 | 1 = -1;
 

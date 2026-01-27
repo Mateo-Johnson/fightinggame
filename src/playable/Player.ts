@@ -3,15 +3,16 @@ import Phaser from "phaser";
 export type Stance = "low" | "mid" | "high";
 export type AttackType = "light" | "heavy";
 
-type PlayerState =
+type State =
   | "idle"
   | "dash"
   | "attack"
   | "block"
   | "parry"
   | "hit"
-  | "stagger"
   | "dead";
+
+type AttackPhase = "startup" | "active" | "recovery";
 
 export default class Player {
   private scene: Phaser.Scene;
@@ -20,65 +21,67 @@ export default class Player {
   public attackHitbox: Phaser.GameObjects.Rectangle;
   public blockHitbox: Phaser.GameObjects.Rectangle;
 
-  private state: PlayerState = "idle";
+  private state: State = "idle";
   private facing: -1 | 1 = 1;
+
   private velocityY = 0;
 
-  private dashTime = 0;
+  // Timers
+  private dashTimer = 0;
   private dashCooldown = 0;
-  private dashDir: -1 | 1 = 1;
-  private dashSpeed = 0;
 
-  private attackCooldown = 0;
-  private attackType: AttackType = "light";
-  private attackStance: Stance = "mid";
-
-  private blockTime = 0;
+  private blockTimer = 0;
   private blockCooldown = 0;
 
-  private stance: Stance = "mid";
-
-  private combo = 0;
-  private comboTimer = 0;
-
-  private parryTime = 0;
+  private parryTimer = 0;
   private parryCooldown = 0;
+
+  private attackTimer = 0;
+  private attackPhase: AttackPhase = "startup";
 
   private hitstop = 0;
   private hitstun = 0;
 
+  private combo = 0;
+  private comboTimer = 0;
+
   private health = 100;
 
-  private attackActiveTimer = 0;
-  private attackActive = false;
-  private attackTotalTimer = 0;
+  // Attack info
+  private attackType: AttackType = "light";
+  private attackStance: Stance = "mid";
+  private stance: Stance = "mid";
 
+  // Constants
   private readonly SPEED = 200;
   private readonly GRAVITY = 100;
   private readonly GROUND_Y = 600;
 
   private readonly DASH_SPEED = 600;
-  private readonly DASH_DURATION = 0.15;
+  private readonly DASH_TIME = 0.15;
   private readonly DASH_COOLDOWN = 0.5;
 
   private readonly BACK_DASH_SPEED = 300;
-  private readonly BACK_DASH_DURATION = 0.1;
+  private readonly BACK_DASH_TIME = 0.1;
 
-  private readonly LIGHT_COOLDOWN = 0.4;
-  private readonly HEAVY_COOLDOWN = 1.0;
-
-  private readonly BLOCK_DURATION = 0.2;
+  private readonly BLOCK_TIME = 0.2;
   private readonly BLOCK_COOLDOWN = 0.2;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.scene = scene;
 
-    // Cube player
-    this.sprite = scene.add.rectangle(x, y, 40, 60, 0x0000ff);
-    this.sprite.setOrigin(0.5, 1);
+    this.sprite = scene.add
+      .rectangle(x, y, 40, 60, 0x0000ff)
+      .setOrigin(0.5, 1);
 
-    this.attackHitbox = scene.add.rectangle(0, 0, 60, 20, 0xffff00).setVisible(false);
-    this.blockHitbox = scene.add.rectangle(0, 0, 40, 20, 0x00ff00).setVisible(false);
+    this.attackHitbox = scene.add
+      .rectangle(0, 0, 60, 20, 0xffff00)
+      .setVisible(false);
+
+    this.blockHitbox = scene.add
+      .rectangle(0, 0, 40, this.sprite.height / 3, 0x00ff00)
+      .setOrigin(0.5, 1)
+      .setVisible(false);
   }
 
   update(dt: number, input: any) {
@@ -89,11 +92,54 @@ export default class Player {
       return;
     }
 
-    if (this.hitstun > 0) {
-      this.hitstun -= dt;
-      if (this.hitstun <= 0) this.state = "idle";
-    }
+    this.updateTimers(dt);
+    this.updateGravity(dt);
+    this.updateStance(input);
 
+    switch (this.state) {
+      case "idle":
+        this.updateMovement(input, dt);
+        this.tryDash(input);
+        this.tryAttack(input);
+        this.tryBlock(input);
+        this.tryParry(input);
+        break;
+
+      case "dash":
+        this.updateDash(dt);
+        break;
+
+      case "attack":
+        this.updateAttack(dt);
+        break;
+
+      case "block":
+        this.updateBlock(dt);
+        break;
+
+      case "parry":
+        this.updateParry(dt);
+        break;
+
+      case "hit":
+        if (this.hitstun <= 0) this.state = "idle";
+        break;
+    }
+  }
+
+  // ---------------- Core ----------------
+
+  private updateTimers(dt: number) {
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    this.blockCooldown = Math.max(0, this.blockCooldown - dt);
+    this.parryCooldown = Math.max(0, this.parryCooldown - dt);
+    this.comboTimer = Math.max(0, this.comboTimer - dt);
+    this.hitstun = Math.max(0, this.hitstun - dt);
+
+    if (this.comboTimer === 0) this.combo = 0;
+  }
+
+  private updateGravity(dt: number) {
     this.velocityY += this.GRAVITY * dt;
     this.sprite.y += this.velocityY;
 
@@ -101,79 +147,17 @@ export default class Player {
       this.sprite.y = this.GROUND_Y;
       this.velocityY = 0;
     }
+  }
 
-    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
-    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-    this.blockCooldown = Math.max(0, this.blockCooldown - dt);
-    this.parryCooldown = Math.max(0, this.parryCooldown - dt);
-
-    this.comboTimer = Math.max(0, this.comboTimer - dt);
-    if (this.comboTimer === 0) this.combo = 0;
-
+  private updateStance(input: any) {
     if (input.cursors.up.isDown) this.stance = "high";
     else if (input.cursors.down.isDown) this.stance = "low";
     else this.stance = "mid";
-
-    switch (this.state) {
-      case "idle":
-        this.handleMovement(input, dt);
-        this.handleDash(input);
-        this.handleBlock(input);
-        this.handleParry(input);
-        this.handleAttack(input);
-        break;
-
-      case "dash":
-        this.dashTime -= dt;
-        this.sprite.x += this.dashDir * this.dashSpeed * dt;
-        if (this.dashTime <= 0) this.state = "idle";
-        break;
-
-      case "block":
-        this.blockTime -= dt;
-        this.updateHitbox(this.blockHitbox);
-        if (this.blockTime <= 0) this.endBlock();
-        break;
-
-      case "parry":
-        this.parryTime -= dt;
-        if (this.parryTime <= 0) this.state = "idle";
-        break;
-
-      case "attack":
-        this.attackTotalTimer -= dt;
-
-        if (!this.attackActive) {
-          this.attackActiveTimer -= dt;
-          if (this.attackActiveTimer <= 0) {
-            this.attackActive = true;
-            this.attackHitbox.setVisible(true);
-          }
-        } else {
-          if (this.attackActiveTimer <= -0.12) {
-            this.attackHitbox.setVisible(false);
-            this.attackActive = false;
-          }
-        }
-
-        this.updateHitbox(this.attackHitbox);
-
-        if (this.attackTotalTimer <= 0) {
-          this.endAttack();
-        }
-        break;
-
-      case "hit":
-        break;
-
-      case "stagger":
-        this.hitstun -= dt;
-        if (this.hitstun <= 0) this.state = "idle";
-        break;
-    }
   }
 
-  private handleMovement(input: any, dt: number) {
+  // ---------------- Movement ----------------
+
+  private updateMovement(input: any, dt: number) {
     if (input.cursors.left.isDown) {
       this.sprite.x -= this.SPEED * dt;
       this.facing = -1;
@@ -184,52 +168,43 @@ export default class Player {
     }
   }
 
-  private handleDash(input: any) {
-    if (Phaser.Input.Keyboard.JustDown(input.keys.dash) && this.dashCooldown <= 0) {
-      let dir = this.facing;
-      let speed = this.DASH_SPEED;
-      let duration = this.DASH_DURATION;
+  private tryDash(input: any) {
+    if (!Phaser.Input.Keyboard.JustDown(input.keys.dash)) return;
+    if (this.dashCooldown > 0) return;
 
-      if (
-        (input.cursors.left.isDown && this.facing === 1) ||
-        (input.cursors.right.isDown && this.facing === -1) ||
-        (!input.cursors.left.isDown && !input.cursors.right.isDown)
-      ) {
-        dir = this.facing === 1 ? -1 : 1;
-        speed = this.BACK_DASH_SPEED;
-        duration = this.BACK_DASH_DURATION;
-      }
+    const forward =
+      (input.cursors.right.isDown && this.facing === 1) ||
+      (input.cursors.left.isDown && this.facing === -1);
 
-      this.startDash(dir, speed, duration);
-    }
-  }
-
-  private handleBlock(input: any) {
-    if (Phaser.Input.Keyboard.JustDown(input.keys.block) && this.blockCooldown <= 0) {
-      this.startBlock();
-    }
-  }
-
-  private handleParry(input: any) {
-    if (Phaser.Input.Keyboard.JustDown(input.keys.parry) && this.parryCooldown <= 0) {
-      this.startParry();
-    }
-  }
-
-  private handleAttack(input: any) {
-    if (this.attackCooldown > 0) return;
-    if (input.cursors.left.isDown || input.cursors.right.isDown) return;
-
-    if (Phaser.Input.Keyboard.JustDown(input.keys.light)) this.startAttack("light");
-    if (Phaser.Input.Keyboard.JustDown(input.keys.heavy)) this.startAttack("heavy");
-  }
-
-  private startDash(dir: -1 | 1, speed: number, duration: number) {
     this.state = "dash";
-    this.dashDir = dir;
-    this.dashSpeed = speed;
-    this.dashTime = duration;
+    this.dashTimer = forward ? this.DASH_TIME : this.BACK_DASH_TIME;
     this.dashCooldown = this.DASH_COOLDOWN;
+
+    this.velocityY = 0;
+  }
+
+  private updateDash(dt: number) {
+    this.dashTimer -= dt;
+    const speed =
+      this.dashTimer > this.BACK_DASH_TIME
+        ? this.DASH_SPEED
+        : this.BACK_DASH_SPEED;
+
+    this.sprite.x += this.facing * speed * dt;
+
+    if (this.dashTimer <= 0) this.state = "idle";
+  }
+
+  // ---------------- Attack ----------------
+
+  private tryAttack(input: any) {
+    if (this.attackTimer > 0) return;
+
+    if (Phaser.Input.Keyboard.JustDown(input.keys.light)) {
+      this.startAttack("light");
+    } else if (Phaser.Input.Keyboard.JustDown(input.keys.heavy)) {
+      this.startAttack("heavy");
+    }
   }
 
   private startAttack(type: AttackType) {
@@ -237,71 +212,141 @@ export default class Player {
     this.attackType = type;
     this.attackStance = this.stance;
 
-    this.attackCooldown = type === "light" ? this.LIGHT_COOLDOWN : this.HEAVY_COOLDOWN;
+    this.attackPhase = "startup";
+    this.attackTimer = type === "light" ? 0.12 : 0.18;
 
     this.combo++;
     this.comboTimer = 0.6;
-
-    this.attackTotalTimer = type === "light" ? 0.35 : 0.6;
-    this.attackActiveTimer = type === "light" ? 0.12 : 0.18;
-    this.attackActive = false;
   }
 
-  private endAttack() {
-    this.state = "idle";
-    this.attackHitbox.setVisible(false);
-    this.attackActive = false;
+  private updateAttack(dt: number) {
+    this.attackTimer -= dt;
+
+    if (this.attackPhase === "startup" && this.attackTimer <= 0) {
+      this.attackPhase = "active";
+      this.attackTimer = this.attackType === "light" ? 0.12 : 0.18;
+      this.attackHitbox.setVisible(true);
+    } else if (this.attackPhase === "active" && this.attackTimer <= 0) {
+      this.attackPhase = "recovery";
+      this.attackTimer = this.attackType === "light" ? 0.11 : 0.24;
+      this.attackHitbox.setVisible(false);
+    } else if (this.attackPhase === "recovery" && this.attackTimer <= 0) {
+      this.state = "idle";
+    }
+
+    if (this.attackPhase === "active") {
+      this.updateAttackHitbox();
+    }
   }
 
-  private startBlock() {
+  private updateAttackHitbox() {
+    const x =
+      this.sprite.x +
+      this.facing *
+        (this.sprite.width / 2 + this.attackHitbox.width / 2 + 10);
+
+    const baseY = this.sprite.y - this.sprite.height * 0.5;
+    const offset = this.sprite.height * 0.25;
+
+    this.attackHitbox.x = x;
+    this.attackHitbox.y =
+      this.attackStance === "high"
+        ? baseY - offset
+        : this.attackStance === "low"
+        ? baseY + offset
+        : baseY;
+  }
+
+  // ---------------- Block / Parry ----------------
+
+  private tryBlock(input: any) {
+    if (!Phaser.Input.Keyboard.JustDown(input.keys.block)) return;
+    if (this.blockCooldown > 0) return;
+
     this.state = "block";
-    this.blockTime = this.BLOCK_DURATION;
+    this.blockTimer = this.BLOCK_TIME;
     this.blockCooldown = this.BLOCK_COOLDOWN;
     this.blockHitbox.setVisible(true);
   }
 
-  private endBlock() {
-    this.state = "idle";
-    this.blockHitbox.setVisible(false);
+  private updateBlock(dt: number) {
+    this.blockTimer -= dt;
+    this.updateBlockHitbox();
+
+    if (this.blockTimer <= 0) {
+      this.blockHitbox.setVisible(false);
+      this.state = "idle";
+    }
   }
 
-  private startParry() {
+  private tryParry(input: any) {
+    if (!Phaser.Input.Keyboard.JustDown(input.keys.parry)) return;
+    if (this.parryCooldown > 0) return;
+
     this.state = "parry";
-    this.parryTime = 0.15;
+    this.parryTimer = 0.15;
     this.parryCooldown = 0.6;
   }
+
+  private updateParry(dt: number) {
+    this.parryTimer -= dt;
+    if (this.parryTimer <= 0) this.state = "idle";
+  }
+
+  // ---------------- Hitboxes ----------------
+
+  private updateBlockHitbox() {
+    const x =
+      this.sprite.x +
+      this.facing *
+        (this.sprite.width / 2 + this.blockHitbox.width / 2 + 10);
+
+    const bottom = this.sprite.y;
+    const third = this.sprite.height / 3;
+
+    let bottomY: number;
+
+    switch (this.stance) {
+      case "high":
+        bottomY = bottom - third * 2;
+        break;
+      case "mid":
+        bottomY = bottom - third;
+        break;
+      case "low":
+        bottomY = bottom;
+        break;
+    }
+
+    this.blockHitbox.x = x;
+    this.blockHitbox.y = bottomY;
+  }
+
+  // ---------------- Combat ----------------
 
   public applyHit(
     direction: -1 | 1,
     force: number,
     hitstun: number,
     damage: number,
-    isAirborne: boolean
+    airborne: boolean
   ) {
     if (this.state === "dead") return;
 
-    // Parry: no damage
     if (this.state === "parry") {
-      this.state = "idle";
       this.hitstop = 0.08;
+      this.state = "idle";
       return;
     }
 
-    // Block: no damage if attack hits at correct stance level
     if (this.state === "block") {
-      if (this.overlaps(this.attackHitbox, this.blockHitbox) && this.attackStance === this.stance) {
-        this.endBlock();
-        return;
-      }
-
-      // block ends regardless
-      this.endBlock();
+      this.blockHitbox.setVisible(false);
+      this.state = "idle";
+      return;
     }
 
-    // Take damage normally
     this.health -= damage;
     if (this.health <= 0) {
-      this.health = 0;
       this.state = "dead";
       this.sprite.setVisible(false);
       this.attackHitbox.setVisible(false);
@@ -312,80 +357,29 @@ export default class Player {
     this.state = "hit";
     this.hitstun = hitstun;
     this.hitstop = 0.06;
-    this.velocityY = isAirborne ? -180 : -120;
+    this.velocityY = airborne ? -180 : -120;
   }
 
-  private updateHitbox(box: Phaser.GameObjects.Rectangle) {
-    const FORWARD_OFFSET = 10;
+  // ---------------- Queries ----------------
 
-    const offsetX = this.sprite.width / 2 + box.width / 2 + FORWARD_OFFSET;
-    const x = this.sprite.x + this.facing * offsetX;
-
-    const baseY = this.sprite.y - this.sprite.height * 0.5;
-    const stanceOffset = this.sprite.height * 0.25;
-
-    if (this.state === "attack") {
-      box.x = x;
-      const stance = this.attackStance;
-
-      if (stance === "high") box.y = baseY - stanceOffset;
-      else if (stance === "low") box.y = baseY + stanceOffset;
-      else box.y = baseY;
-
-      box.width = 60;
-      box.height = 20;
-    } else if (this.state === "block") {
-      box.x = x;
-
-      if (this.stance === "high") box.y = baseY - stanceOffset * 0.5;
-      else if (this.stance === "low") box.y = baseY + stanceOffset * 0.5;
-      else box.y = baseY;
-
-      box.width = 40;
-      box.height = 30;
-    }
+  public isAttacking() {
+    return this.state === "attack" && this.attackPhase === "active";
   }
 
-  private overlaps(a: Phaser.GameObjects.Rectangle, b: Phaser.GameObjects.Rectangle) {
-    return (
-      a.x - a.width / 2 < b.x + b.width / 2 &&
-      a.x + a.width / 2 > b.x - b.width / 2 &&
-      a.y - a.height / 2 < b.y + b.height / 2 &&
-      a.y + a.height / 2 > b.y - b.height / 2
-    );
+  public getAttackDamage() {
+    const base = this.attackType === "light" ? 60 : 120;
+    return base * (1 + Math.min(0.5, this.combo * 0.1));
   }
 
-  public getFacing(): -1 | 1 {
-    return this.facing;
-  }
-
-  public getAttackType(): AttackType {
-    return this.attackType;
-  }
-
-  public isCurrentlyAttacking() {
-    return this.state === "attack" && this.attackActive;
+  public isDead() {
+    return this.state === "dead";
   }
 
   public getAttackHitbox() {
     return this.attackHitbox;
   }
 
-  public isBlocking() {
-    return this.state === "block";
-  }
-
-  public isParrying() {
-    return this.state === "parry";
-  }
-
-  public getAttackDamage(): number {
-    const base = this.attackType === "light" ? 60 : 120;
-    const comboBonus = 1 + Math.min(0.5, this.combo * 0.1);
-    return base * comboBonus;
-  }
-
-  public isDead() {
-    return this.state === "dead";
+  public getFacing(): -1 | 1 {
+    return this.facing;
   }
 }
