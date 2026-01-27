@@ -1,4 +1,3 @@
-import Phaser, { Game } from "phaser";
 import GameScene from "./scenes/GameScene";
 import MainMenu from "./scenes/MainMenu";
 import TrainingScene from "./scenes/TrainingScene";

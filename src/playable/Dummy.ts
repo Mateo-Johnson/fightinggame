@@ -1,12 +1,15 @@
 import Phaser from "phaser";
+import Player from "./Player";
 
 export type DummyState =
   | "idle"
+  | "move"
   | "attack"
   | "block"
   | "hit"
-  | "stagger"
   | "dead";
+
+export type Stance = "low" | "mid" | "high";
 
 export default class Dummy {
   public sprite: Phaser.GameObjects.Rectangle;
@@ -15,42 +18,45 @@ export default class Dummy {
 
   private state: DummyState = "idle";
   private facing: -1 | 1 = -1;
+  private stance: Stance = "mid";
 
+  private velocityX = 0;
   private velocityY = 0;
-  private knockbackX = 0;
 
+  private readonly SPEED = 140;
   private readonly GRAVITY = 100;
-  private readonly GROUND_Y = 573;
+  private readonly GROUND_Y = 600;
 
   private hitstun = 0;
   private hitstop = 0;
-
   private health = 120;
 
-  private guard = 100;
-  private readonly GUARD_MAX = 100;
-  private guardBroken = false;
-  private guardBreakTime = 0;
-
   // AI
-  private actionTimer = 0;
+  private decisionTimer = 0;
 
-  // attack timing
-  private attackActiveTimer = 0;
-  private attackTotalTimer = 0;
+  // attack
   private attackActive = false;
+  private attackTimer = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  private player: Player;
+
+  constructor(scene: Phaser.Scene, player: Player, x: number, y: number) {
+    this.player = player;
+
     this.sprite = scene.add.rectangle(x, y, 50, 50, 0xff0000);
-    this.hitbox = scene.add.rectangle(x, y, 40, 20, 0xff00ff).setVisible(false);
+    this.sprite.setOrigin(0.5, 1);
+
+    this.hitbox = scene.add.rectangle(x, y, 40, 50, 0xff00ff).setVisible(false);
 
     this.attackHitbox = scene
-      .add.rectangle(x, y, 60, 20, 0xffaa00)
+      .add.rectangle(0, 0, 60, 20, 0xffaa00)
       .setVisible(false);
   }
 
   update(dt: number) {
     if (this.state === "dead") return;
+
+    this.updateFacing();
 
     if (this.hitstop > 0) {
       this.hitstop -= dt;
@@ -62,15 +68,109 @@ export default class Dummy {
       if (this.hitstun <= 0) this.state = "idle";
     }
 
-    if (this.guardBroken) {
-      this.guardBreakTime -= dt;
-      if (this.guardBreakTime <= 0) {
-        this.guardBroken = false;
-        this.state = "idle";
-      }
+    this.updateAI(dt);
+    this.updatePhysics(dt);
+
+    this.hitbox.x = this.sprite.x;
+    this.hitbox.y = this.sprite.y;
+  }
+
+  // ================= AI =================
+
+  private updateAI(dt: number) {
+    if (this.state === "hit") return;
+
+    this.decisionTimer -= dt;
+    if (this.decisionTimer > 0) return;
+
+    this.decisionTimer = 0.15;
+
+    const dist = Math.abs(this.player.sprite.x - this.sprite.x);
+
+    // prefer mid-range
+    if (dist > 140) {
+      this.state = "move";
+      this.velocityX = this.facing * this.SPEED;
+      return;
     }
 
-    // gravity
+    // too close → back off or block
+    if (dist < 70) {
+      if (Math.random() < 0.6) {
+        this.state = "block";
+        this.velocityX = 0;
+      } else {
+        this.state = "move";
+        this.velocityX = -this.facing * this.SPEED;
+      }
+      return;
+    }
+
+    // in range → react
+    if (this.player.isAttacking()) {
+      if (Math.random() < 0.7) {
+        this.startBlock();
+      }
+      return;
+    }
+
+    // whiff punish
+    if (Math.random() < 0.5) {
+      this.startAttack();
+    }
+  }
+
+  private updateFacing() {
+    this.facing = this.player.sprite.x > this.sprite.x ? 1 : -1;
+  }
+
+  // ================= ATTACK =================
+
+  private startAttack() {
+    this.state = "attack";
+    this.attackTimer = 0.4;
+    this.attackActive = false;
+    this.stance = Phaser.Math.RND.pick(["low", "mid", "high"]);
+  }
+
+  private updateAttack(dt: number) {
+    this.attackTimer -= dt;
+
+    if (!this.attackActive && this.attackTimer < 0.25) {
+      this.attackActive = true;
+      this.attackHitbox.setVisible(true);
+    }
+
+    if (this.attackTimer <= 0) {
+      this.attackHitbox.setVisible(false);
+      this.attackActive = false;
+      this.state = "idle";
+    }
+
+    this.updateAttackHitbox();
+  }
+
+  private updateAttackHitbox() {
+    this.attackHitbox.x =
+      this.sprite.x + this.facing * (this.sprite.width / 2 + 30);
+    this.attackHitbox.y = this.sprite.y - 25;
+  }
+
+  // ================= BLOCK =================
+
+  private startBlock() {
+    this.state = "block";
+    this.decisionTimer = 0.3;
+  }
+
+  // ================= PHYSICS =================
+
+  private updatePhysics(dt: number) {
+    if (this.state === "attack") this.updateAttack(dt);
+
+    this.sprite.x += this.velocityX * dt;
+    this.velocityX *= 0.9;
+
     this.velocityY += this.GRAVITY * dt;
     this.sprite.y += this.velocityY;
 
@@ -78,127 +178,48 @@ export default class Dummy {
       this.sprite.y = this.GROUND_Y;
       this.velocityY = 0;
     }
-
-    // AI
-    this.actionTimer -= dt;
-    if (this.actionTimer <= 0) {
-      this.chooseAction();
-    }
-
-    // attack timing
-    if (this.state === "attack") {
-      this.attackTotalTimer -= dt;
-
-      if (!this.attackActive) {
-        this.attackActiveTimer -= dt;
-        if (this.attackActiveTimer <= 0) {
-          this.attackActive = true;
-          this.attackHitbox.setVisible(true);
-        }
-      } else {
-        if (this.attackActiveTimer <= -0.12) {
-          this.attackHitbox.setVisible(false);
-          this.attackActive = false;
-        }
-      }
-
-      this.updateAttackHitbox();
-      if (this.attackTotalTimer <= 0) this.endAttack();
-    }
-
-    // keep hitbox following
-    this.hitbox.x = this.sprite.x;
-    this.hitbox.y = this.sprite.y;
   }
 
-  private chooseAction() {
-    this.actionTimer = Phaser.Math.Between(0.8, 2.0);
-
-    const r = Phaser.Math.Between(0, 3);
-
-    if (this.guardBroken) return;
-
-    if (r === 0) this.startBlock();
-    else if (r === 1) this.startAttack();
-    else this.state = "idle";
-  }
-
-  private startAttack() {
-    this.state = "attack";
-    this.attackTotalTimer = 0.6;
-    this.attackActiveTimer = 0.2;
-    this.attackActive = false;
-  }
-
-  private endAttack() {
-    this.state = "idle";
-    this.attackHitbox.setVisible(false);
-    this.attackActive = false;
-  }
-
-  private startBlock() {
-    this.state = "block";
-    this.actionTimer = 0.4;
-  }
+  // ================= COMBAT =================
 
   public applyKnockback(direction: -1 | 1, force: number, hitstun: number) {
     if (this.state === "dead") return;
+
     this.state = "hit";
-    this.knockbackX = direction * force;
-    this.velocityY = -10;
+    this.velocityX = direction * force;
+    this.velocityY = -15;
     this.hitstun = hitstun;
     this.hitstop = 0.05;
   }
 
   public applyDamage(amount: number) {
-    if (this.state === "dead") return;
     this.health -= amount;
     if (this.health <= 0) {
-      this.health = 0;
       this.state = "dead";
-      this.hitbox.setVisible(false);
-      this.attackHitbox.setVisible(false);
       this.sprite.setVisible(false);
+      this.attackHitbox.setVisible(false);
     }
   }
 
-  private updateAttackHitbox() {
-    const x = this.sprite.x + this.facing * 40;
-    this.attackHitbox.x = x;
-    this.attackHitbox.y = this.sprite.y;
-    this.attackHitbox.width = 60;
-    this.attackHitbox.height = 20;
-  }
+  // ================= GETTERS =================
 
-  public getHitbox() {
-    return this.hitbox;
+  public isAttacking() {
+    return this.state === "attack" && this.attackActive;
   }
 
   public getAttackHitbox() {
     return this.attackHitbox;
   }
 
+  public getAttackStance(): Stance {
+    return this.stance;
+  }
+
   public getFacing(): -1 | 1 {
     return this.facing;
   }
 
-  public isAttacking() {
-    return this.state === "attack" && this.attackActive;
-  }
-
-  public isBlocking() {
-    return this.state === "block";
-  }
-
-  public isDead() {
-    return this.state === "dead";
-  }
-
-  public getHealth() {
-    return this.health;
-  }
-
-  public getGuard() {
-    return this.guard;
+  public getHitbox() {
+    return this.hitbox;
   }
 }

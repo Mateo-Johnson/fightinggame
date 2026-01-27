@@ -25,8 +25,8 @@ export default class Player {
   private facing: -1 | 1 = 1;
 
   private velocityY = 0;
+  private velocityX = 0;
 
-  // Timers
   private dashTimer = 0;
   private dashCooldown = 0;
 
@@ -42,17 +42,20 @@ export default class Player {
   private hitstop = 0;
   private hitstun = 0;
 
+  private attackCooldown = 0;
+
+  private readonly LIGH_ATTACK_COOLDOWN = 0.3;
+  private readonly HEAVY_ATTACK_COOLDOWN = 0.6;
+
   private combo = 0;
   private comboTimer = 0;
 
   private health = 100;
 
-  // Attack info
   private attackType: AttackType = "light";
   private attackStance: Stance = "mid";
   private stance: Stance = "mid";
 
-  // Constants
   private readonly SPEED = 200;
   private readonly GRAVITY = 100;
   private readonly GROUND_Y = 600;
@@ -67,6 +70,8 @@ export default class Player {
   private readonly BLOCK_TIME = 0.2;
   private readonly BLOCK_COOLDOWN = 0.2;
 
+  private readonly BLOCK_OFFSET = 2;
+
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.scene = scene;
 
@@ -74,11 +79,12 @@ export default class Player {
       .rectangle(x, y, 40, 60, 0x0000ff)
       .setOrigin(0.5, 1);
 
-    this.attackHitbox = scene.add
-      .rectangle(0, 0, 60, 20, 0xffff00)
+    this.attackHitbox = scene
+      .add.rectangle(0, 0, 60, 20, 0xffff00)
       .setVisible(false);
 
-    this.blockHitbox = scene.add
+    this.blockHitbox = scene
+      .add
       .rectangle(0, 0, 40, this.sprite.height / 3, 0x00ff00)
       .setOrigin(0.5, 1)
       .setVisible(false);
@@ -104,30 +110,23 @@ export default class Player {
         this.tryBlock(input);
         this.tryParry(input);
         break;
-
       case "dash":
         this.updateDash(dt);
         break;
-
       case "attack":
         this.updateAttack(dt);
         break;
-
       case "block":
         this.updateBlock(dt);
         break;
-
       case "parry":
         this.updateParry(dt);
         break;
-
       case "hit":
         if (this.hitstun <= 0) this.state = "idle";
         break;
     }
   }
-
-  // ---------------- Core ----------------
 
   private updateTimers(dt: number) {
     this.dashCooldown = Math.max(0, this.dashCooldown - dt);
@@ -135,6 +134,7 @@ export default class Player {
     this.parryCooldown = Math.max(0, this.parryCooldown - dt);
     this.comboTimer = Math.max(0, this.comboTimer - dt);
     this.hitstun = Math.max(0, this.hitstun - dt);
+    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
 
     if (this.comboTimer === 0) this.combo = 0;
   }
@@ -142,6 +142,9 @@ export default class Player {
   private updateGravity(dt: number) {
     this.velocityY += this.GRAVITY * dt;
     this.sprite.y += this.velocityY;
+    this.sprite.x += this.velocityX * dt;
+
+    this.velocityX *= 0.9;
 
     if (this.sprite.y >= this.GROUND_Y) {
       this.sprite.y = this.GROUND_Y;
@@ -154,8 +157,6 @@ export default class Player {
     else if (input.cursors.down.isDown) this.stance = "low";
     else this.stance = "mid";
   }
-
-  // ---------------- Movement ----------------
 
   private updateMovement(input: any, dt: number) {
     if (input.cursors.left.isDown) {
@@ -179,7 +180,6 @@ export default class Player {
     this.state = "dash";
     this.dashTimer = forward ? this.DASH_TIME : this.BACK_DASH_TIME;
     this.dashCooldown = this.DASH_COOLDOWN;
-
     this.velocityY = 0;
   }
 
@@ -195,23 +195,17 @@ export default class Player {
     if (this.dashTimer <= 0) this.state = "idle";
   }
 
-  // ---------------- Attack ----------------
-
   private tryAttack(input: any) {
     if (this.attackTimer > 0) return;
 
-    if (Phaser.Input.Keyboard.JustDown(input.keys.light)) {
-      this.startAttack("light");
-    } else if (Phaser.Input.Keyboard.JustDown(input.keys.heavy)) {
-      this.startAttack("heavy");
-    }
+    if (Phaser.Input.Keyboard.JustDown(input.keys.light)) this.startAttack("light");
+    else if (Phaser.Input.Keyboard.JustDown(input.keys.heavy)) this.startAttack("heavy");
   }
 
   private startAttack(type: AttackType) {
     this.state = "attack";
     this.attackType = type;
     this.attackStance = this.stance;
-
     this.attackPhase = "startup";
     this.attackTimer = type === "light" ? 0.12 : 0.18;
 
@@ -234,16 +228,14 @@ export default class Player {
       this.state = "idle";
     }
 
-    if (this.attackPhase === "active") {
-      this.updateAttackHitbox();
-    }
+    if (this.attackPhase === "active") this.updateAttackHitbox();
   }
 
   private updateAttackHitbox() {
     const x =
       this.sprite.x +
       this.facing *
-        (this.sprite.width / 2 + this.attackHitbox.width / 2 + 10);
+        (this.sprite.width / 2 + this.attackHitbox.width / 2 + this.BLOCK_OFFSET);
 
     const baseY = this.sprite.y - this.sprite.height * 0.5;
     const offset = this.sprite.height * 0.25;
@@ -256,8 +248,6 @@ export default class Player {
         ? baseY + offset
         : baseY;
   }
-
-  // ---------------- Block / Parry ----------------
 
   private tryBlock(input: any) {
     if (!Phaser.Input.Keyboard.JustDown(input.keys.block)) return;
@@ -293,13 +283,11 @@ export default class Player {
     if (this.parryTimer <= 0) this.state = "idle";
   }
 
-  // ---------------- Hitboxes ----------------
-
   private updateBlockHitbox() {
     const x =
       this.sprite.x +
       this.facing *
-        (this.sprite.width / 2 + this.blockHitbox.width / 2 + 10);
+        (this.sprite.width / 2 + this.blockHitbox.width / 2 + this.BLOCK_OFFSET);
 
     const bottom = this.sprite.y;
     const third = this.sprite.height / 3;
@@ -322,14 +310,17 @@ export default class Player {
     this.blockHitbox.y = bottomY;
   }
 
-  // ---------------- Combat ----------------
+  private canBlockAttack(attackStance: Stance) {
+    return attackStance === this.stance;
+  }
 
   public applyHit(
     direction: -1 | 1,
     force: number,
     hitstun: number,
     damage: number,
-    airborne: boolean
+    airborne: boolean,
+    attackStance: Stance
   ) {
     if (this.state === "dead") return;
 
@@ -340,9 +331,11 @@ export default class Player {
     }
 
     if (this.state === "block") {
-      this.blockHitbox.setVisible(false);
-      this.state = "idle";
-      return;
+      if (this.canBlockAttack(attackStance)) {
+        this.blockHitbox.setVisible(false);
+        this.state = "idle";
+        return;
+      }
     }
 
     this.health -= damage;
@@ -357,10 +350,10 @@ export default class Player {
     this.state = "hit";
     this.hitstun = hitstun;
     this.hitstop = 0.06;
-    this.velocityY = airborne ? -180 : -120;
-  }
 
-  // ---------------- Queries ----------------
+    this.velocityY = airborne ? -10 : -10;
+    this.velocityX = direction * force;
+  }
 
   public isAttacking() {
     return this.state === "attack" && this.attackPhase === "active";
