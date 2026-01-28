@@ -28,7 +28,7 @@ export default class Player {
 
   private blockTimer = 0;
   private blockCooldown = 0;
-  private perfectBlockWindow = 0.2; // longer window now
+  private perfectBlockWindow = 0.2;
   private lastBlockTime = 0;
 
   private attackTimer = 0;
@@ -38,13 +38,11 @@ export default class Player {
   private hitstop = 0;
   private hitstun = 0;
 
-  private health = 900;
+  private health = 100;
 
   private attackType: AttackType = "light";
   private attackStance: Stance = "mid";
   private stance: Stance = "mid";
-
-  private hasHitOpponent = false;
 
   private readonly SPEED = 200;
   private readonly GRAVITY = 100;
@@ -66,8 +64,8 @@ export default class Player {
 
   public input!: InputMap;
 
-  // ======== NEW: STAMINA SYSTEM ========
-  private stamina = 40; // enough for 4 light hits, 2 heavy, 3 blocks
+  // ======== STAMINA SYSTEM ========
+  private stamina = 40;
   public maxStamina = 40;
 
   private staminaBlocks: Phaser.GameObjects.Rectangle[] = [];
@@ -154,7 +152,7 @@ export default class Player {
         if (canAct) {
           this.updateMovement(dt);
           this.tryDash(opponent);
-          this.tryAttack();
+          this.tryAttack(opponent);
           this.tryBlock();
         }
         break;
@@ -249,23 +247,20 @@ export default class Player {
     }
   }
 
-  private tryAttack() {
+  private tryAttack(opponent: Player) {
     if (this.attackCooldown > 0) return;
 
-    // Check stamina
-    const cost = 10; // light attack cost
-    if (this.stamina < cost) return;
-
     if (Phaser.Input.Keyboard.JustDown(this.input.keys.light)) {
-      this.startAttack("light");
-      this.attackCooldown = this.LIGHT_ATTACK_COOLDOWN;
-      this.spendStamina(10);
+      if (this.stamina >= 10) {
+        this.startAttack("light");
+        this.attackCooldown = this.LIGHT_ATTACK_COOLDOWN;
+        this.spendStamina(10);
+      }
     } else if (Phaser.Input.Keyboard.JustDown(this.input.keys.heavy)) {
-      const heavyCost = 20;
-      if (this.stamina >= heavyCost) {
+      if (this.stamina >= 20) {
         this.startAttack("heavy");
         this.attackCooldown = this.HEAVY_ATTACK_COOLDOWN;
-        this.spendStamina(heavyCost);
+        this.spendStamina(20);
       }
     }
   }
@@ -276,14 +271,27 @@ export default class Player {
     this.attackStance = this.stance;
     this.attackPhase = "startup";
     this.attackTimer = type === "light" ? 0.12 : 0.18;
-    this.hasHitOpponent = false;
   }
 
   private updateAttack(dt: number, opponent: Player) {
     if (this.attackPhase === "startup" && this.attackTimer <= 0) {
       this.attackPhase = "active";
       this.attackTimer = this.attackType === "light" ? 0.12 : 0.18;
+
       this.attackHitbox.setVisible(true);
+
+      // ✅ Single-frame collision hitbox
+      const tempHitbox = new Phaser.Geom.Rectangle(
+        this.sprite.x + this.facing * (this.sprite.width / 2),
+        this.sprite.y - this.sprite.height / 2,
+        this.attackHitbox.width,
+        this.attackHitbox.height
+      );
+
+      if (Phaser.Geom.Intersects.RectangleToRectangle(tempHitbox, opponent.sprite.getBounds())) {
+        opponent.applyHit(this.facing, 10, 0.2, this.getAttackDamage(), false, this.attackStance);
+      }
+
     } else if (this.attackPhase === "active" && this.attackTimer <= 0) {
       this.attackPhase = "recovery";
       this.attackTimer = this.attackType === "light" ? 0.11 : 0.24;
@@ -294,7 +302,6 @@ export default class Player {
 
     if (this.attackPhase === "active") {
       this.updateAttackHitbox();
-      this.checkAttackHit(opponent);
     }
   }
 
@@ -308,20 +315,11 @@ export default class Player {
       this.attackStance === "high" ? baseY - offset : this.attackStance === "low" ? baseY + offset : baseY;
   }
 
-  private checkAttackHit(opponent: Player) {
-    if (this.hasHitOpponent) return;
-
-    if (Phaser.Geom.Intersects.RectangleToRectangle(this.attackHitbox.getBounds(), opponent.sprite.getBounds())) {
-      opponent.applyHit(this.facing, 10, 0.2, this.getAttackDamage(), false, this.attackStance);
-      this.hasHitOpponent = true;
-    }
-  }
-
   private tryBlock() {
     if (!Phaser.Input.Keyboard.JustDown(this.input.keys.block)) return;
     if (this.blockCooldown > 0) return;
 
-    if (this.stamina < 5) return; // block cost
+    if (this.stamina < 5) return;
 
     this.state = "block";
     this.blockTimer = this.BLOCK_TIME;
@@ -366,7 +364,6 @@ export default class Player {
   public applyHit(direction: -1 | 1, force: number, hitstun: number, damage: number, airborne: boolean, attackStance: Stance) {
     if (this.state === "dead") return;
 
-    // Perfect block detection
     const perfectBlock = this.state === "block" && (this.lastBlockTime > 0 || this.stance === attackStance);
     if (perfectBlock) {
       this.hitstun = 0;
@@ -375,7 +372,6 @@ export default class Player {
       this.velocityY = 0;
       this.state = "idle";
 
-      // Flash block hitbox
       this.blockHitbox.setFillStyle(0xffffff, 1);
       this.scene.tweens.add({
         targets: this.blockHitbox,
@@ -384,9 +380,7 @@ export default class Player {
         onComplete: () => this.blockHitbox.setAlpha(1).setFillStyle(0x00ff00),
       });
 
-      // Reward stamina
       this.gainStamina(5);
-
       return;
     }
 
@@ -406,7 +400,6 @@ export default class Player {
     this.velocityY = airborne ? -10 : -10;
   }
 
-  // ======== STAMINA METHODS ========
   private spendStamina(amount: number) {
     this.stamina = Math.max(0, this.stamina - amount);
   }
@@ -431,7 +424,7 @@ export default class Player {
   }
 
   public getAttackDamage() {
-    return this.attackType === "light" ? 50 : 100;
+    return this.attackType === "light" ? 10 : 15;
   }
 
   public isAttacking() {
