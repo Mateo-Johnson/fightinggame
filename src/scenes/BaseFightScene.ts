@@ -1,114 +1,62 @@
 import Phaser from "phaser";
 import Player from "../playable/Player";
-import Dummy from "../playable/Dummy";
 
 export default abstract class BaseFightScene extends Phaser.Scene {
-  protected player!: Player;
-  protected dummy!: Dummy;
+  protected player1!: Player;
+  protected player2!: Player;
 
-  protected cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  protected keys!: any;
-
-  private dummyAttackResolved = false;
-  private playerAttackResolved = false;
+  private p1HealthText!: Phaser.GameObjects.Text;
+  private p2HealthText!: Phaser.GameObjects.Text;
 
   constructor(key: string) {
     super(key);
   }
 
   create() {
-    this.setupInput();
-    this.createStage(); // 👈 overridden by subclasses
+    this.createStage(); // implemented in subclass
     this.createFighters();
+
+    // Health display
+    this.p1HealthText = this.add.text(20, 20, "", { fontSize: "20px", color: "#ffffff" });
+    this.p2HealthText = this.add.text(500, 20, "", { fontSize: "20px", color: "#ff0000" });
   }
 
   update(_: number, delta: number) {
     const dt = delta / 1000;
-    const input = { cursors: this.cursors, keys: this.keys };
 
-    this.player.update(dt, input);
-    this.dummy.update(dt);
+    // Update both players
+    this.player1.update(dt, this.player2);
+    this.player2.update(dt, this.player1);
 
-    if (!this.dummy.isAttacking()) this.dummyAttackResolved = false;
-    if (!this.player.isAttacking()) this.playerAttackResolved = false;
+    // Resolve combat hits
+    this.resolveHit(this.player1, this.player2);
+    this.resolveHit(this.player2, this.player1);
 
-    this.resolveCombat();
+    // Update health display
+    this.p1HealthText.setText(`P1: ${this.player1.getHealth()}`);
+    this.p2HealthText.setText(`P2: ${this.player2.getHealth()}`);
   }
 
-  // ---------- INPUT ----------
-  protected setupInput() {
-    this.cursors = this.input.keyboard!.createCursorKeys();
-    this.keys = this.input.keyboard!.addKeys({
-      light: Phaser.Input.Keyboard.KeyCodes.Z,
-      heavy: Phaser.Input.Keyboard.KeyCodes.X,
-      block: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      dash: Phaser.Input.Keyboard.KeyCodes.F,
-      parry: Phaser.Input.Keyboard.KeyCodes.C,
-    });
-  }
-
-  // ---------- FIGHTERS ----------
   protected createFighters() {
-    this.player = new Player(this, 200, 450);
-    this.dummy = new Dummy(this, this.player, 500, 450);
+    this.player1 = new Player(this, 200, 450, "p1");
+    this.player2 = new Player(this, 600, 450, "p2");
   }
 
-  // ---------- COMBAT ----------
-  protected resolveCombat() {
-    this.resolveDummyAttack();
-    this.resolvePlayerAttack();
-  }
+  private resolveHit(attacker: Player, defender: Player) {
+    if (!attacker.isAttacking()) return;
 
-  protected resolveDummyAttack() {
-    if (!this.dummy.isAttacking() || this.dummyAttackResolved) return;
+    const attackBox = attacker.getAttackHitbox().getBounds();
+    const defenderBox = defender.sprite.getBounds();
 
-    const attackBox = this.dummy.getAttackHitbox().getBounds();
+    if (!Phaser.Geom.Intersects.RectangleToRectangle(attackBox, defenderBox)) return;
 
-    if (this.player.blockHitbox.visible) {
-      const blockBox = this.player.blockHitbox.getBounds();
-      if (Phaser.Geom.Intersects.RectangleToRectangle(attackBox, blockBox)) {
-        this.dummyAttackResolved = true;
-        return;
-      }
-    }
-
-    const playerBox = this.player.sprite.getBounds();
-    if (!Phaser.Geom.Intersects.RectangleToRectangle(attackBox, playerBox)) return;
-
-    this.dummyAttackResolved = true;
-
-    const direction = this.player.sprite.x > this.dummy.sprite.x ? 1 : -1;
-
-    this.player.applyHit(
-      direction,
-      160,
-      0.15,
-      20,
-      false,
-      this.dummy.getAttackStance()
-    );
-  }
-
-  protected resolvePlayerAttack() {
-    if (!this.player.isAttacking() || this.playerAttackResolved) return;
-
-    const attackBox = this.player.getAttackHitbox().getBounds();
-    const dummyBox = this.dummy.getHitbox().getBounds();
-
-    if (!Phaser.Geom.Intersects.RectangleToRectangle(attackBox, dummyBox)) return;
-
-    this.playerAttackResolved = true;
-
-    const direction = this.dummy.sprite.x > this.player.sprite.x ? 1 : -1;
-    const damage = this.player.getAttackDamage();
-
-    const knockback = damage < 100 ? 200 : 450;
+    const direction = defender.sprite.x > attacker.sprite.x ? 1 : -1;
+    const damage = attacker.getAttackDamage();
+    const knockback = damage < 100 ? 160 : 250;
     const hitstun = damage < 100 ? 0.15 : 0.25;
 
-    this.dummy.applyKnockback(direction, knockback, hitstun);
-    this.dummy.applyDamage(damage);
+    defender.applyHit(direction, knockback, hitstun, damage, false, attacker.getAttackStance());
   }
 
-  // ---------- STAGE ----------
   protected abstract createStage(): void;
 }

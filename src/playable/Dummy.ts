@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import Player from "./Player";
+import Player, { type Stance } from "./Player";
 
 export type DummyState =
   | "idle"
@@ -8,8 +8,6 @@ export type DummyState =
   | "block"
   | "hit"
   | "dead";
-
-export type Stance = "low" | "mid" | "high";
 
 export default class Dummy {
   public sprite: Phaser.GameObjects.Rectangle;
@@ -31,10 +29,7 @@ export default class Dummy {
   private hitstop = 0;
   private health = 120;
 
-  // AI
   private decisionTimer = 0;
-
-  // attack
   private attackActive = false;
   private attackTimer = 0;
 
@@ -75,8 +70,6 @@ export default class Dummy {
     this.hitbox.y = this.sprite.y;
   }
 
-  // ================= AI =================
-
   private updateAI(dt: number) {
     if (this.state === "hit") return;
 
@@ -87,18 +80,15 @@ export default class Dummy {
 
     const dist = Math.abs(this.player.sprite.x - this.sprite.x);
 
-    // prefer mid-range
     if (dist > 140) {
       this.state = "move";
       this.velocityX = this.facing * this.SPEED;
       return;
     }
 
-    // too close → back off or block
     if (dist < 70) {
       if (Math.random() < 0.6) {
-        this.state = "block";
-        this.velocityX = 0;
+        this.startBlock();
       } else {
         this.state = "move";
         this.velocityX = -this.facing * this.SPEED;
@@ -106,25 +96,17 @@ export default class Dummy {
       return;
     }
 
-    // in range → react
     if (this.player.isAttacking()) {
-      if (Math.random() < 0.7) {
-        this.startBlock();
-      }
+      if (Math.random() < 0.7) this.startBlock();
       return;
     }
 
-    // whiff punish
-    if (Math.random() < 0.5) {
-      this.startAttack();
-    }
+    if (Math.random() < 0.5) this.startAttack();
   }
 
   private updateFacing() {
     this.facing = this.player.sprite.x > this.sprite.x ? 1 : -1;
   }
-
-  // ================= ATTACK =================
 
   private startAttack() {
     this.state = "attack";
@@ -156,14 +138,10 @@ export default class Dummy {
     this.attackHitbox.y = this.sprite.y - 25;
   }
 
-  // ================= BLOCK =================
-
   private startBlock() {
     this.state = "block";
     this.decisionTimer = 0.3;
   }
-
-  // ================= PHYSICS =================
 
   private updatePhysics(dt: number) {
     if (this.state === "attack") this.updateAttack(dt);
@@ -179,8 +157,6 @@ export default class Dummy {
       this.velocityY = 0;
     }
   }
-
-  // ================= COMBAT =================
 
   public applyKnockback(direction: -1 | 1, force: number, hitstun: number) {
     if (this.state === "dead") return;
@@ -201,8 +177,6 @@ export default class Dummy {
     }
   }
 
-  // ================= GETTERS =================
-
   public isAttacking() {
     return this.state === "attack" && this.attackActive;
   }
@@ -222,4 +196,9 @@ export default class Dummy {
   public getHitbox() {
     return this.hitbox;
   }
+
+  public getHealth(): number {
+    return this.health;
+  }
+
 }
