@@ -2,8 +2,16 @@ import Phaser from "phaser";
 
 export type Stance = "low" | "mid" | "high";
 export type AttackType = "light" | "heavy";
-type State = "idle" | "dash" | "attack" | "block" | "hit" | "stunned" | "dead";
-type AttackPhase = "startup" | "active" | "recovery";
+export type State =
+  | "idle"
+  | "dash"
+  | "attack"
+  | "block"
+  | "hit"
+  | "stunned"
+  | "dead";
+
+export type AttackPhase = "startup" | "active" | "recovery";
 
 export type AttackData = {
   id: number;
@@ -24,78 +32,92 @@ interface InputMap {
 export default class Player {
   private static ATTACK_ID = 0;
 
+  // ===== CORE =====
   private scene: Phaser.Scene;
-
-  public sprite: Phaser.GameObjects.Rectangle;
-  public attackHitbox: Phaser.GameObjects.Rectangle;
-  public blockHitbox: Phaser.GameObjects.Rectangle;
+  public sprite: Phaser.GameObjects.Sprite;
   public opponent!: Player;
+  private groundY: number;
 
+  // ===== STATE =====
   private state: State = "idle";
   private attackPhase: AttackPhase = "startup";
   private facing: -1 | 1 = 1;
 
+  // ===== MOTION =====
   private velocityX = 0;
   private velocityY = 0;
 
+  // ===== TIMERS =====
   private dashTimer = 0;
   private dashCooldown = 0;
-
   private blockTimer = 0;
   private blockCooldown = 0;
   private lastBlockTime = 0;
-
   private stunTimer = 0;
-
   private attackTimer = 0;
   private attackCooldown = 0;
-  private currentAttack?: AttackData;
-
   private hitstop = 0;
   private hitstun = 0;
 
+  // ===== COMBAT =====
+  private currentAttack?: AttackData;
   private health = 20;
 
+  // ===== STANCE =====
   private stance: Stance = "mid";
   private attackStance: Stance = "mid";
 
+  // ===== HITBOXES =====
+  public attackHitbox: Phaser.GameObjects.Rectangle;
+  public blockHitbox: Phaser.GameObjects.Rectangle;
+
   // ===== STAMINA =====
   private stamina = 40;
-  public maxStamina = 40;
-
+  public readonly maxStamina = 40;
   private staminaBlocks: Phaser.GameObjects.Rectangle[] = [];
   private readonly STAMINA_UNIT = 5;
-  private readonly STAMINA_REGEN_RATE = 1; 
+  private readonly STAMINA_REGEN_RATE = 1;
 
   // ===== CONSTANTS =====
   private readonly SPEED = 200;
   private readonly GRAVITY = 100;
-  private groundY: number;
-
   private readonly FORWARD_DASH_SPEED = 1000;
   private readonly BACK_DASH_SPEED = 500;
   private readonly DASH_COOLDOWN = 0.5;
-
   private readonly BLOCK_TIME = 0.4;
   private readonly BLOCK_COOLDOWN = 0.3;
   private readonly PERFECT_BLOCK_WINDOW = 0.12;
 
   public input!: InputMap;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, tag: string, groundY: number) {
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    tag: "p1" | "p2",
+    groundY: number
+  ) {
     this.scene = scene;
     this.groundY = groundY;
 
+    // VISUAL ONLY (animation handler controls anims)
     this.sprite = scene.add
-      .rectangle(x, y, 40, 60, tag === "p1" ? 0x0000ff : 0xff0000)
+      .sprite(x, y, "player", 0)
       .setOrigin(0.5, 1);
 
+        if (tag === "p1") {
+    const scale = 0.85; // 80% size
+    this.sprite.setScale(scale);
+        }
+
+
+    // HITBOXES
     this.attackHitbox = scene.add
       .rectangle(0, 0, 60, 20, 0xffff00)
       .setVisible(false);
 
     this.blockHitbox = scene.add
-      .rectangle(0, 0, 40, this.sprite.height / 3, 0x00ff00)
+      .rectangle(0, 0, 40, this.sprite.displayHeight / 3, 0x00ff00)
       .setOrigin(0.5, 1)
       .setVisible(false);
 
@@ -135,16 +157,6 @@ export default class Player {
   update(dt: number) {
     if (this.state === "dead") return;
 
-    // Handle stun state
-    if (this.state === "stunned") {
-      this.stunTimer -= dt; // dt is in seconds
-      if (this.stunTimer <= 0) {
-        this.state = "idle"; // ensure state resets
-      }
-      return; // skip all other updates while stunned
-    }
-
-
     if (this.hitstop > 0) {
       this.hitstop -= dt;
       return;
@@ -153,15 +165,17 @@ export default class Player {
     this.updateTimers(dt);
     this.updatePhysics(dt);
     this.updateStance();
-    this.gainStamina(this.STAMINA_REGEN_RATE * dt);
+    this.regenStamina(dt);
     this.updateStaminaUI();
-    this.handlePlayerCollision();
+    this.resolvePlayerPush();
+
+    if (this.state === "stunned") {
+      if (this.stunTimer <= 0) this.state = "idle";
+      return;
+    }
 
     if (this.hitstun > 0) return;
-
-    if (this.state === "hit") {
-      this.state = "idle";
-    }
+    if (this.state === "hit") this.state = "idle";
 
     switch (this.state) {
       case "idle":
@@ -192,78 +206,7 @@ export default class Player {
     }
   }
 
-  // ================= STAMINA =================
-
-  private tryDash() {
-    if (this.dashCooldown > 0) return;
-    if (!Phaser.Input.Keyboard.JustDown(this.input.keys.dash)) return;
-
-    const opponentDir =
-      this.opponent.sprite.x > this.sprite.x ? 1 : -1;
-
-    const isDashingTowardOpponent = this.facing === opponentDir;
-
-    this.state = "dash";
-    this.dashCooldown = this.DASH_COOLDOWN;
-    this.dashTimer = isDashingTowardOpponent ? 0.12 : 0.08;
-
-    const speed = isDashingTowardOpponent
-      ? this.FORWARD_DASH_SPEED
-      : this.BACK_DASH_SPEED;
-
-    this.velocityX = speed * this.facing;
-  }
-
-
-public getActiveAttack(): AttackData | null {
-  if (
-    this.state === "attack" &&
-    this.attackPhase === "active" &&
-    this.currentAttack &&
-    !this.currentAttack.hasHit
-  ) {
-    return this.currentAttack;
-  }
-
-  return null;
-}
-
-
-  private createStaminaUI(x: number, y: number) {
-    const blocks = this.maxStamina / this.STAMINA_UNIT;
-    for (let i = 0; i < blocks; i++) {
-      const block = this.scene.add
-        .rectangle(x + i * 12, y, 10, 10, 0x00ff00)
-        .setOrigin(0, 0);
-      this.staminaBlocks.push(block);
-    }
-  }
-
-  private spendStamina(amount: number) {
-    this.stamina = Math.max(0, this.stamina - amount);
-  }
-
-  private gainStamina(amount: number) {
-    this.stamina = Math.min(this.maxStamina, this.stamina + amount);
-  }
-
-  private updateStaminaUI() {
-    const units = Math.floor(this.stamina / this.STAMINA_UNIT);
-    this.staminaBlocks.forEach((b, i) => b.setVisible(i < units));
-  }
-
-  // ================= CORE =================
-
-  private updateTimers(dt: number) {
-    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
-    this.blockCooldown = Math.max(0, this.blockCooldown - dt);
-    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-    this.hitstun = Math.max(0, this.hitstun - dt);
-    this.attackTimer = Math.max(0, this.attackTimer - dt);
-    this.lastBlockTime = Math.max(0, this.lastBlockTime - dt);
-    this.blockTimer = Math.max(0, this.blockTimer - dt);
-    this.dashTimer = Math.max(0, this.dashTimer - dt);
-  }
+  // ================= MOTION =================
 
   private updatePhysics(dt: number) {
     this.velocityY += this.GRAVITY * dt;
@@ -271,17 +214,12 @@ public getActiveAttack(): AttackData | null {
     this.sprite.y += this.velocityY;
     this.velocityX *= 0.85;
 
+    this.sprite.setFlipX(this.facing === -1);
+
     if (this.sprite.y >= this.groundY) {
       this.sprite.y = this.groundY;
       this.velocityY = 0;
     }
-  }
-
-  private updateStance() {
-    const c = this.input.cursors;
-    if (c.up?.isDown) this.stance = "high";
-    else if (c.down?.isDown) this.stance = "low";
-    else this.stance = "mid";
   }
 
   private handleMovement(dt: number) {
@@ -296,21 +234,36 @@ public getActiveAttack(): AttackData | null {
     }
   }
 
+  // ================= DASH =================
+
+  private tryDash() {
+    if (this.dashCooldown > 0) return;
+    if (!Phaser.Input.Keyboard.JustDown(this.input.keys.dash)) return;
+
+    const towardOpponent =
+      (this.opponent.sprite.x > this.sprite.x ? 1 : -1) === this.facing;
+
+    this.state = "dash";
+    this.dashCooldown = this.DASH_COOLDOWN;
+    this.dashTimer = towardOpponent ? 0.12 : 0.08;
+    this.velocityX =
+      (towardOpponent ? this.FORWARD_DASH_SPEED : this.BACK_DASH_SPEED) *
+      this.facing;
+  }
+
   // ================= ATTACK =================
 
   private tryAttack() {
     if (this.attackCooldown > 0) return;
 
-    if (Phaser.Input.Keyboard.JustDown(this.input.keys.light)) {
-      if (this.stamina >= 10) {
-        this.spendStamina(10);
-        this.beginAttack("light");
-      }
-    } else if (Phaser.Input.Keyboard.JustDown(this.input.keys.heavy)) {
-      if (this.stamina >= 20) {
-        this.spendStamina(20);
-        this.beginAttack("heavy");
-      }
+    if (Phaser.Input.Keyboard.JustDown(this.input.keys.light) && this.stamina >= 10) {
+      this.spendStamina(10);
+      this.beginAttack("light");
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.input.keys.heavy) && this.stamina >= 20) {
+      this.spendStamina(20);
+      this.beginAttack("heavy");
     }
   }
 
@@ -353,58 +306,7 @@ public getActiveAttack(): AttackData | null {
     this.updateAttackHitbox();
   }
 
-  private updateAttackHitbox() {
-    const x = this.sprite.x + this.facing * 45;
-    const baseY = this.sprite.y - this.sprite.height / 2;
-    const offset = this.sprite.height / 4;
-
-    this.attackHitbox.x = x;
-    this.attackHitbox.y =
-      this.attackStance === "high"
-        ? baseY - offset
-        : this.attackStance === "low"
-        ? baseY + offset
-        : baseY;
-  }
-
-  private handlePlayerCollision() {
-  const a = this.sprite;
-  const b = this.opponent.sprite;
-
-  const overlapX = a.width / 2 + b.width / 2 - Math.abs(a.x - b.x);
-  const overlapY = a.height / 2 + b.height / 2 - Math.abs(a.y - b.y);
-
-  if (overlapX > 0 && overlapY > 0) {
-    // Push players apart horizontally
-    const push = overlapX / 2;
-    if (a.x < b.x) {
-      a.x -= push;
-      b.x += push;
-    } else {
-      a.x += push;
-      b.x -= push;
-    }
-  }
-}
-
-
   // ================= BLOCK =================
-
-  public stun(duration: number) {
-    this.state = "stunned";
-    this.stunTimer = duration;
-
-    const originalColor = this.sprite.fillColor;
-    this.sprite.fillColor = 0xff0000; // red to indicate stun
-
-    // Restore color and idle state after stun duration
-    this.scene.time.delayedCall(duration * 1000, () => {
-      if (this.state === "stunned") {
-        this.sprite.fillColor = originalColor;
-        this.state = "idle";
-      }
-    });
-  }
 
   private tryBlock() {
     if (this.blockCooldown > 0) return;
@@ -419,62 +321,32 @@ public getActiveAttack(): AttackData | null {
     this.blockHitbox.setVisible(true);
   }
 
-  private updateBlockHitbox() {
-    const bottom = this.sprite.y;
-    const third = this.sprite.height / 3;
-
-    let y: number;
-    switch (this.stance) {
-      case "high":
-        y = bottom - third * 2;
-        break;
-      case "mid":
-        y = bottom - third;
-        break;
-      case "low":
-        y = bottom;
-        break;
-    }
-
-    this.blockHitbox.x = this.sprite.x;
-    this.blockHitbox.y = y;
-  }
-
-  private flashBlockHitbox() {
-    const originalColor = this.blockHitbox.fillColor;
-    this.blockHitbox.fillColor = 0x0000ff;
-    this.scene.time.delayedCall(100, () => {
-      this.blockHitbox.fillColor = originalColor;
-    });
-  }
+  // ================= COLLISION / COMBAT =================
 
   public resolveIncomingAttack(attack: AttackData) {
-    const isBlocking = this.state === "block";
+    const blocking = this.state === "block";
     const stanceMatch = this.stance === attack.stance;
-    const perfect = isBlocking && this.lastBlockTime > 0;
+    const perfect = blocking && this.lastBlockTime > 0;
 
     if (perfect) {
       this.hitstop = 0.06;
       this.state = "idle";
       this.gainStamina(5);
-      this.flashBlockHitbox();
       return;
     }
 
-    // New: blocking heavy attack -> stunned
-    if (isBlocking && attack.type === "heavy" && stanceMatch) {
-      this.stun(1); // 1 second stun
+    if (blocking && attack.type === "heavy" && stanceMatch) {
+      this.state = "stunned";
+      this.stunTimer = 1;
       return;
     }
 
-    // Normal block
-    if (isBlocking && stanceMatch) {
+    if (blocking && stanceMatch) {
       this.hitstun = 0.1;
       this.hitstop = 0.04;
       return;
     }
 
-    // Normal hit
     this.health -= attack.damage;
     this.state = "hit";
     this.hitstun = attack.hitstun;
@@ -489,17 +361,145 @@ public getActiveAttack(): AttackData | null {
     }
   }
 
-  // ================= GETTERS =================
+  // ================= HITBOX HELPERS =================
+
+  private updateAttackHitbox() {
+    this.attackHitbox.x = this.sprite.x + this.facing * 45;
+
+    const baseY = this.sprite.y - this.sprite.displayHeight / 2;
+    const offset = this.sprite.displayHeight / 4;
+
+    this.attackHitbox.y =
+      this.attackStance === "high"
+        ? baseY - offset
+        : this.attackStance === "low"
+        ? baseY + offset
+        : baseY;
+  }
+
+  private updateBlockHitbox() {
+    const bottom = this.sprite.y;
+    const third = this.sprite.displayHeight / 3;
+
+    this.blockHitbox.x = this.sprite.x;
+    this.blockHitbox.y =
+      this.stance === "high"
+        ? bottom - third * 2
+        : this.stance === "low"
+        ? bottom
+        : bottom - third;
+  }
+
+  private resolvePlayerPush() {
+    const a = this.sprite.getBounds();
+    const b = this.opponent.sprite.getBounds();
+    if (!Phaser.Geom.Intersects.RectangleToRectangle(a, b)) return;
+
+    const overlap = a.width / 2 + b.width / 2 - Math.abs(a.centerX - b.centerX);
+    const push = overlap / 2;
+
+    if (a.centerX < b.centerX) {
+      this.sprite.x -= push;
+      this.opponent.sprite.x += push;
+    } else {
+      this.sprite.x += push;
+      this.opponent.sprite.x -= push;
+    }
+  }
+
+  // ================= STAMINA =================
+
+  private createStaminaUI(x: number, y: number) {
+    for (let i = 0; i < this.maxStamina / this.STAMINA_UNIT; i++) {
+      this.staminaBlocks.push(
+        this.scene.add.rectangle(x + i * 12, y, 10, 10, 0x00ff00)
+      );
+    }
+  }
+
+  private spendStamina(v: number) {
+    this.stamina = Math.max(0, this.stamina - v);
+  }
+
+  private gainStamina(v: number) {
+    this.stamina = Math.min(this.maxStamina, this.stamina + v);
+  }
+
+  private regenStamina(dt: number) {
+    this.gainStamina(this.STAMINA_REGEN_RATE * dt);
+  }
+
+  private updateStaminaUI() {
+    const units = Math.floor(this.stamina / this.STAMINA_UNIT);
+    this.staminaBlocks.forEach((b, i) => b.setVisible(i < units));
+  }
+
+  // ================= TIMERS =================
+
+  private updateTimers(dt: number) {
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    this.blockCooldown = Math.max(0, this.blockCooldown - dt);
+    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+    this.hitstun = Math.max(0, this.hitstun - dt);
+    this.attackTimer = Math.max(0, this.attackTimer - dt);
+    this.lastBlockTime = Math.max(0, this.lastBlockTime - dt);
+    this.blockTimer = Math.max(0, this.blockTimer - dt);
+    this.dashTimer = Math.max(0, this.dashTimer - dt);
+    this.stunTimer = Math.max(0, this.stunTimer - dt);
+  }
+
+  private updateStance() {
+    const c = this.input.cursors;
+    if (c.up?.isDown) this.stance = "high";
+    else if (c.down?.isDown) this.stance = "low";
+    else this.stance = "mid";
+  }
+
+  // ================= READ-ONLY API FOR ANIMATION HANDLER =================
+
+  public getState() {
+    return this.state;
+  }
+
+  public getAttackPhase() {
+    return this.attackPhase;
+  }
+
+  public getCurrentAttackType(): AttackType | null {
+    return this.currentAttack?.type ?? null;
+  }
+
+  public getFacing() {
+    return this.facing;
+  }
+
+  public isBlocking() {
+    return this.state === "block";
+  }
+
+  public isStunned() {
+    return this.state === "stunned";
+  }
 
   public getHealth() {
     return this.health;
   }
 
-  public getStamina() {
-    return this.stamina;
-  }
-
   public getAttackHitbox() {
     return this.attackHitbox;
+  }
+  public getVelocityX() { 
+    return this.velocityX; 
+  }
+
+  public getActiveAttack(): AttackData | null { 
+    if ( 
+      this.state === "attack" && 
+      this.attackPhase === "active" && 
+      this.currentAttack && !this.currentAttack.hasHit 
+    ) { 
+      return this.currentAttack; 
+    } 
+    return null; 
   }
 }

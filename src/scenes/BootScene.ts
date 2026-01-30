@@ -6,6 +6,17 @@ export default class BootScene extends Phaser.Scene {
   }
 
   preload() {
+
+    this.load.spritesheet("p1_idle", "assets/animations/p1/idle.png", {
+        frameWidth: 111,
+        frameHeight: 138, 
+    });
+    this.load.spritesheet("p2_idle", "assets/animations/p2/idle.png", {
+        frameWidth: 95,
+        frameHeight: 155, 
+    });
+
+
     this.load.image(
       "bg-training",
       "assets/backgrounds/pondbg.png"
@@ -26,10 +37,6 @@ export default class BootScene extends Phaser.Scene {
       "bg-bamboo",
       "assets/backgrounds/bamboobg.png"
     );
-    this.load.spritesheet("player_idle", "assets/animations/player_idle.png", {
-        frameWidth: 150,
-        frameHeight: 150, 
-    });
 
     this.load.spritesheet("loadingscreen", "assets/animations/load.png", {
       frameWidth: 800,
