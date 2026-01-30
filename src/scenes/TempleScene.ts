@@ -1,8 +1,8 @@
 import BaseFightScene from "./BaseFightScene";
 
-export default class TrainingScene extends BaseFightScene {
+export default class TempleScene extends BaseFightScene {
   constructor() {
-    super("TrainingScene");
+    super("TempleScene");
   }
 
   
@@ -11,23 +11,17 @@ export default class TrainingScene extends BaseFightScene {
     
     // background (loaded in BootScene)
     this.add
-      .image(400, 300, "bg-training")
+      .image(400, 300, "bg-bamboo")
       .setDisplaySize(800, 600)
       .setDepth(-10);
 
-      const groundY = 400; // this stage's ground
-  this.groundY = groundY; 
+      const groundY = 490; // this stage's ground
+      this.groundY = groundY; 
 
     // ground line (visual reference only)
     this.add
       .rectangle(400, 600, 800, 10, 0x444444)
       .setDepth(0);
-
-      this.add
-      .image(400, 300, "fg-training")
-      .setDisplaySize(800, 600)
-      .setDepth(2);
-
 
   }
 }

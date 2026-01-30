@@ -19,6 +19,10 @@ export default class MainMenu extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
 
+    // Clear old menu objects if scene is restarted
+    this.options = [];
+    this.selectedIndex = 0;
+
     // Title
     this.add.text(width / 2, 120, "my game", {
       fontSize: "48px",
@@ -53,15 +57,17 @@ export default class MainMenu extends Phaser.Scene {
     this.updateSelection();
 
     // Keyboard input
-    const keys = this.input.keyboard!.addKeys({
+    const keys = this.input.keyboard?.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.UP,
       down: Phaser.Input.Keyboard.KeyCodes.DOWN,
       enter: Phaser.Input.Keyboard.KeyCodes.ENTER
     }) as any;
 
-    keys.up.on("down", () => this.moveSelection(-1));
-    keys.down.on("down", () => this.moveSelection(1));
-    keys.enter.on("down", () => this.activate(this.selectedIndex));
+    if (keys) {
+      keys.up.on("down", () => this.moveSelection(-1));
+      keys.down.on("down", () => this.moveSelection(1));
+      keys.enter.on("down", () => this.activate(this.selectedIndex));
+    }
   }
 
   private moveSelection(dir: number) {
@@ -97,7 +103,7 @@ export default class MainMenu extends Phaser.Scene {
         break;
 
       case "Options":
-        console.log("Options selected");
+        this.scene.start("TempleScene");
         break;
 
       case "Credits":
