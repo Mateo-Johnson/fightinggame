@@ -90,29 +90,35 @@ export default class MainMenu extends Phaser.Scene {
     });
   }
 
-  private activate(index: number) {
-    const choice = this.menuItems[index];
+private activate(index: number) {
+  const choice = this.menuItems[index];
 
-    switch (choice) {
-      case "Start Game":
-        this.scene.start("GameScene");
-        break;
+  switch (choice) {
+    case "Start Game":
+      // Array of possible scenes
+      const gameScenes = ["TempleScene", "PagodaScene"];
+      // Pick a random one
+      const randomScene =
+        gameScenes[Math.floor(Math.random() * gameScenes.length)];
+      this.scene.start(randomScene);
+      break;
 
-      case "Training":
-        this.scene.start("TrainingScene");
-        break;
+    case "Training":
+      this.scene.start("TrainingScene");
+      break;
 
-      case "Options":
-        this.scene.start("TempleScene");
-        break;
+    case "Options":
+      console.log("Options selected");
+      break;
 
-      case "Credits":
-        console.log("Credits selected");
-        break;
+    case "Credits":
+      console.log("Credits selected");
+      break;
 
-      case "Quit":
-        console.log("Quit selected");
-        break;
-    }
+    case "Quit":
+      console.log("Quit selected");
+      break;
   }
+}
+
 }

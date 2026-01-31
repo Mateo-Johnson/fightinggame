@@ -196,26 +196,22 @@ export default class BootScene extends Phaser.Scene {
       "assets/backgrounds/pondbg.png"
     );
     this.load.image(
+      "bg-bridge",
+      "assets/backgrounds/bridgebg.png"
+    );
+    this.load.image(
+      "fg-bridge",
+      "assets/backgrounds/bridgefg.png"
+    )
+    this.load.image(
       "fg-training",
       "assets/backgrounds/pondfg.png"
-    );
-    this.load.image(
-      "bg-pagoda",
-      "assets/backgrounds/dojobg.png"
-    );
-    this.load.image(
-      "bg-temple",
-      "assets/backgrounds/templebg.png"
     );
     this.load.image(
       "bg-bamboo",
       "assets/backgrounds/bamboobg.png"
     );
 
-    this.load.spritesheet("loadingscreen", "assets/animations/load.png", {
-      frameWidth: 800,
-      frameHeight: 600,
-    });
     // this.load.spritesheet("player_run", "assets/player_run.png", {
     // frameWidth: 150,
     // frameHeight: 150,

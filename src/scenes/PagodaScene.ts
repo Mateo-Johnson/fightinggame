@@ -6,18 +6,23 @@ export default class PagodaScene extends BaseFightScene {
   }
 
   protected createStage(): void {
-    // background (loaded in BootScene), scaled down to 70%
+   // background (loaded in BootScene)
     this.add
-      .image(400, 300, "bg-pagoda")
-      .setScale(0.5)
+      .image(400, 300, "bg-bridge")
+      .setDisplaySize(800, 600)
       .setDepth(-10);
 
-    const groundY = 530; // this stage's ground
-    this.groundY = groundY;
+      const groundY = 450; // this stage's ground
+    this.groundY = groundY; 
 
     // ground line (visual reference only)
     this.add
       .rectangle(400, 600, 800, 10, 0x444444)
       .setDepth(0);
+
+      this.add
+      .image(400, 300, "fg-bridge")
+      .setDisplaySize(800, 600)
+      .setDepth(2);
   }
 }
