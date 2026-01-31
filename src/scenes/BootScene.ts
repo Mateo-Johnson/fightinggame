@@ -162,14 +162,31 @@ export default class BootScene extends Phaser.Scene {
         frameHeight: 130, 
     });
 
+    this.load.spritesheet("p1_block_high", "assets/animations/p1/block_high.png", {
+        frameWidth: 94,
+        frameHeight: 116, 
+    });
+    this.load.spritesheet("p2_block_high", "assets/animations/p2/block_high.png", {
+        frameWidth: 94,
+        frameHeight: 173, 
+    });
+
     this.load.spritesheet("p1_dead", "assets/animations/p1/dead.png", {
         frameWidth: 146,
         frameHeight: 132,
+    });
+    this.load.spritesheet("p2_dead", "assets/animations/p2/dead.png", {
+        frameWidth: 194,
+        frameHeight: 179,
     });
 
     this.load.spritesheet("p1_attack_light_mid", "assets/animations/p1/light_mid.png", {
         frameWidth: 197,
         frameHeight: 132, 
+    });
+    this.load.spritesheet("p2_attack_light_mid", "assets/animations/p2/light_mid.png", {
+        frameWidth: 170,
+        frameHeight: 159, 
     });
 
 

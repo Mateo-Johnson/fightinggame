@@ -236,6 +236,9 @@ export default class PlayerAnimationHandler {
         sprite.anims.play("p2_stunned", true);
         break;
       case "dead":
+        sprite.x += sprite.flipX ? -50 : 50;
+
+        sprite.setScale(0.9);
         sprite.anims.play("p2_dead");
         break;
     }

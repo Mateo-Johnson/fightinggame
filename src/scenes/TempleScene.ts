@@ -15,7 +15,7 @@ export default class TempleScene extends BaseFightScene {
       .setDisplaySize(800, 600)
       .setDepth(-10);
 
-      const groundY = 490; // this stage's ground
+      const groundY = 510; // this stage's ground
       this.groundY = groundY; 
 
     // ground line (visual reference only)

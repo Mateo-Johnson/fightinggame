@@ -337,8 +337,27 @@ export default abstract class BaseFightScene extends Phaser.Scene {
     });
 
     this.anims.create({
+      key: "p1_block_high",
+      frames: this.anims.generateFrameNumbers("p1_block_high", { start: 0, end: 1 }),
+      frameRate: 12,
+      repeat: 0,
+    });
+    this.anims.create({
+      key: "p2_block_high",
+      frames: this.anims.generateFrameNumbers("p2_block_high", { start: 0, end: 1 }),
+      frameRate: 12,
+      repeat: 0,
+    });
+
+    this.anims.create({
       key: "p1_dead",
       frames: this.anims.generateFrameNumbers("p1_dead", { start: 0, end: 5 }),
+      frameRate: 8,
+      repeat: 0,
+    });
+    this.anims.create({
+      key: "p2_dead",
+      frames: this.anims.generateFrameNumbers("p2_dead", { start: 0, end: 5 }),
       frameRate: 8,
       repeat: 0,
     });
@@ -346,6 +365,12 @@ export default abstract class BaseFightScene extends Phaser.Scene {
     this.anims.create({
       key: "p1_attack_light_mid",
       frames: this.anims.generateFrameNumbers("p1_attack_light_mid", { start: 0, end: 3 }),
+      frameRate: 8,
+      repeat: -1,
+    });
+    this.anims.create({
+      key: "p2_attack_light_mid",
+      frames: this.anims.generateFrameNumbers("p2_attack_light_mid", { start: 0, end: 3 }),
       frameRate: 8,
       repeat: -1,
     });
