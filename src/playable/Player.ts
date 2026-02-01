@@ -29,11 +29,6 @@ interface InputMap {
   keys: any;
 }
 
-type PlayerOptions = {
-  hurtboxWidth?: number;
-  hurtboxHeight?: number;
-};
-
 export default class Player {
   private static ATTACK_ID = 0;
 
@@ -103,7 +98,6 @@ export default class Player {
     y: number,
     tag: "p1" | "p2",
     groundY: number,
-    options: PlayerOptions = {}
   ) {
     this.scene = scene;
     this.groundY = groundY;

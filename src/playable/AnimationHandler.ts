@@ -4,14 +4,12 @@ import Player from "../playable/Player";
 import type { PlayerAnimState, PlayerTag } from "./AnimationTypes";
 
 export default class PlayerAnimationHandler {
-  private scene: Phaser.Scene;
   private player: Player;
   private tag: PlayerTag;
 
   private currentAnim?: PlayerAnimState;
 
-  constructor(scene: Phaser.Scene, player: Player, tag: PlayerTag) {
-    this.scene = scene;
+  constructor(player: Player, tag: PlayerTag) {
     this.player = player;
     this.tag = tag;
   }

@@ -17,7 +17,7 @@ export default class MainMenu extends Phaser.Scene {
   }
 
   create() {
-    const { width, height } = this.scale;
+    const {width} = this.scale;
 
     // Clear old menu objects if scene is restarted
     this.options = [];

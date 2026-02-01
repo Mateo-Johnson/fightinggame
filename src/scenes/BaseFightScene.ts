@@ -50,21 +50,15 @@ export default abstract class BaseFightScene extends Phaser.Scene {
 
   protected createFighters() {
     // Create players with custom hurtbox sizes
-    this.player1 = new Player(this, 200, this.groundY, "p1", this.groundY, {
-      hurtboxWidth: 50,
-      hurtboxHeight: 130,
-    });
+    this.player1 = new Player(this, 200, this.groundY, "p1", this.groundY);
 
-    this.player2 = new Player(this, 600, this.groundY, "p2", this.groundY, {
-      hurtboxWidth: 60,
-      hurtboxHeight: 150,
-    });
+    this.player2 = new Player(this, 600, this.groundY, "p2", this.groundY);
 
     this.player1.opponent = this.player2;
     this.player2.opponent = this.player1;
 
-    this.p1Anim = new PlayerAnimationHandler(this, this.player1, "p1");
-    this.p2Anim = new PlayerAnimationHandler(this, this.player2, "p2");
+    this.p1Anim = new PlayerAnimationHandler(this.player1, "p1");
+    this.p2Anim = new PlayerAnimationHandler(this.player2, "p2");
   }
 
   private resolveCombat(attacker: Player, defender: Player) {
