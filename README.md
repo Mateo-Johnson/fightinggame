@@ -1,4 +1,9 @@
 # STEEL – Samurai Duel Fighter
+
+## Controls
+- P1: Left/Right arrows to move directionally, up/down arrows to choose attack/block level. Attack with Z for light, and X for heavy. Dash with F, and block with Spacebar.
+- P2: A/D for directional, W/S for choosing attack/block level. Attack with J for light and K for heavy. Block using L and dash using I.
+
 ## Combat
 - **Attacks:** Low / Mid / High × Light / Heavy (6 total)  
 - **Blocks:** Low / Mid / High  
